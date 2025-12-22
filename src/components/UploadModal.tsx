@@ -1,17 +1,44 @@
 import { X, Upload, ImagePlus } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { uploadMemory } from "@/services/memories";
 
 interface UploadModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onUpload: (files: File[]) => void;
 }
 
-const UploadModal = ({ isOpen, onClose, onUpload }: UploadModalProps) => {
+const UploadModal = ({ isOpen, onClose }: UploadModalProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Mutation for uploading images
+  const uploadMutation = useMutation({
+    mutationFn: async (files: File[]) => {
+      const promises = files.map(file => uploadMemory(file));
+      return Promise.all(promises);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["memories"] });
+      toast({
+        title: "¡Recuerdos agregados! 🎄",
+        description: `${selectedFiles.length} imagen(es) agregada(s) a la galería`,
+      });
+      setSelectedFiles([]);
+      onClose();
+    },
+    onError: (error) => {
+      console.error(error);
+      toast({
+        title: "Error al subir",
+        description: "Hubo un problema al guardar tus recuerdos. Inténtalo de nuevo.",
+        variant: "destructive",
+      });
+    }
+  });
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -26,11 +53,11 @@ const UploadModal = ({ isOpen, onClose, onUpload }: UploadModalProps) => {
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    
+
     const files = Array.from(e.dataTransfer.files).filter(file =>
       file.type.startsWith("image/")
     );
-    
+
     if (files.length === 0) {
       toast({
         title: "Error",
@@ -39,7 +66,7 @@ const UploadModal = ({ isOpen, onClose, onUpload }: UploadModalProps) => {
       });
       return;
     }
-    
+
     setSelectedFiles(prev => [...prev, ...files]);
   }, [toast]);
 
@@ -54,7 +81,7 @@ const UploadModal = ({ isOpen, onClose, onUpload }: UploadModalProps) => {
     setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleUpload = () => {
+  const handleUploadClick = () => {
     if (selectedFiles.length === 0) {
       toast({
         title: "Sin imágenes",
@@ -63,15 +90,8 @@ const UploadModal = ({ isOpen, onClose, onUpload }: UploadModalProps) => {
       });
       return;
     }
-    
-    onUpload(selectedFiles);
-    setSelectedFiles([]);
-    onClose();
-    
-    toast({
-      title: "¡Recuerdos agregados! 🎄",
-      description: `${selectedFiles.length} imagen(es) agregada(s) a la galería`,
-    });
+
+    uploadMutation.mutate(selectedFiles);
   };
 
   if (!isOpen) return null;
@@ -103,11 +123,10 @@ const UploadModal = ({ isOpen, onClose, onUpload }: UploadModalProps) => {
 
         {/* Drop zone */}
         <div
-          className={`border-2 border-dashed rounded-xl p-8 text-center transition-all duration-300 ${
-            isDragging
+          className={`border-2 border-dashed rounded-xl p-8 text-center transition-all duration-300 ${isDragging
               ? "border-primary bg-primary/5"
               : "border-border hover:border-primary/50"
-          }`}
+            }`}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
@@ -163,15 +182,16 @@ const UploadModal = ({ isOpen, onClose, onUpload }: UploadModalProps) => {
           <button
             onClick={onClose}
             className="flex-1 py-3 px-4 rounded-full border border-border hover:bg-muted transition-colors font-medium"
+            disabled={uploadMutation.isPending}
           >
             Cancelar
           </button>
           <button
-            onClick={handleUpload}
-            className="flex-1 christmas-button"
-            disabled={selectedFiles.length === 0}
+            onClick={handleUploadClick}
+            className="flex-1 christmas-button disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={selectedFiles.length === 0 || uploadMutation.isPending}
           >
-            Subir {selectedFiles.length > 0 && `(${selectedFiles.length})`}
+            {uploadMutation.isPending ? "Subiendo..." : `Subir ${selectedFiles.length > 0 ? `(${selectedFiles.length})` : ""}`}
           </button>
         </div>
 
