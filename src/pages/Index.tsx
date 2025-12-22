@@ -7,27 +7,31 @@ import ImageModal from "@/components/ImageModal";
 import UploadModal from "@/components/UploadModal";
 import EmptyState from "@/components/EmptyState";
 import Footer from "@/components/Footer";
-
-interface ImageItem {
-  id: string;
-  src: string;
-  alt: string;
-}
+import { useQuery } from "@tanstack/react-query";
+import { getMemories } from "@/services/memories";
 
 const Index = () => {
-  const [images, setImages] = useState<ImageItem[]>([]);
+  const { data: memories = [], isLoading } = useQuery({
+    queryKey: ["memories"],
+    queryFn: getMemories,
+  });
+
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
-  const handleUpload = useCallback((files: File[]) => {
-    const newImages: ImageItem[] = files.map((file, index) => ({
-      id: `${Date.now()}-${index}`,
-      src: URL.createObjectURL(file),
-      alt: file.name,
-    }));
-    
-    setImages(prev => [...newImages, ...prev]);
-  }, []);
+  // Helper to map Supabase structure to UI structure if needed, 
+  // though currently they align well enough for display.
+  // We handle the numeric ID to string conversion implicitly in key or explicitly if needed.
+  const images = memories.map(m => ({
+    id: String(m.id),
+    src: m.image_url,
+    alt: m.name
+  }));
+
+  // handleUpload is now managed inside UploadModal via mutation, 
+  // but we might need to refresh queries. However, UploadModal will handle the mutation 
+  // and invalidation, so we just need to keep the modal open state here.
+  // We can remove the old handleUpload that updated local state.
 
   const handleImageClick = (index: number) => {
     setSelectedImageIndex(index);
@@ -52,11 +56,15 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       <Snowfall />
-      
+
       <Header onUploadClick={() => setIsUploadModalOpen(true)} />
-      
+
       <main className="pb-8">
-        {images.length === 0 ? (
+        {isLoading ? (
+          <div className="flex justify-center py-20">
+            <p className="text-muted-foreground animate-pulse">Cargando recuerdos...</p>
+          </div>
+        ) : images.length === 0 ? (
           <EmptyState onUploadClick={() => setIsUploadModalOpen(true)} />
         ) : (
           <MasonryGrid>
@@ -71,16 +79,15 @@ const Index = () => {
           </MasonryGrid>
         )}
       </main>
-      
+
       <Footer />
-      
+
       {/* Modals */}
       <UploadModal
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
-        onUpload={handleUpload}
       />
-      
+
       {selectedImageIndex !== null && (
         <ImageModal
           src={images[selectedImageIndex].src}
